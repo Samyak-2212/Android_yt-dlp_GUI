@@ -15,6 +15,8 @@ import com.ytdlp.android.data.preferences.PreferencesManager
 import com.ytdlp.android.data.repository.DownloadRepository
 import com.ytdlp.android.engine.YtDlpEngine
 import com.ytdlp.android.service.DownloadService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -89,26 +91,38 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private var extractJob: Job? = null
+
     fun onUrlChanged(newUrl: String) {
         _url.value = newUrl
+        extractJob?.cancel()
         if (newUrl.isNotBlank() && (newUrl.startsWith("http://") || newUrl.startsWith("https://"))) {
-            fetchVideoInfo(newUrl)
+            extractJob = viewModelScope.launch {
+                delay(600)
+                fetchVideoInfoInternal(newUrl)
+            }
         } else {
+            _isExtracting.value = false
             _videoInfo.value = null
         }
     }
 
     fun fetchVideoInfo(urlToFetch: String = _url.value) {
+        extractJob?.cancel()
+        extractJob = viewModelScope.launch {
+            fetchVideoInfoInternal(urlToFetch)
+        }
+    }
+
+    private suspend fun fetchVideoInfoInternal(urlToFetch: String) {
         if (urlToFetch.isBlank()) return
-        viewModelScope.launch {
-            _isExtracting.value = true
-            val result = engine.extractInfo(urlToFetch.trim())
-            _isExtracting.value = false
-            result.onSuccess { info ->
-                _videoInfo.value = info
-            }.onFailure { err ->
-                _snackbarEvent.emit("Could not fetch info: ${err.message}")
-            }
+        _isExtracting.value = true
+        val result = engine.extractInfo(urlToFetch.trim())
+        _isExtracting.value = false
+        result.onSuccess { info ->
+            _videoInfo.value = info
+        }.onFailure { err ->
+            _snackbarEvent.emit("Could not fetch info: ${err.message}")
         }
     }
 

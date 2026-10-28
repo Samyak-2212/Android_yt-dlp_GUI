@@ -25,7 +25,8 @@ A native Android application providing a full-featured GUI for [yt-dlp](https://
 - 📁 **Storage Selection** — SAF picker + persistent path memory, app-external default
 - 🔔 **Foreground Download Service** — Persistent notification with progress bar; survives app backgrounding
 - 📜 **Download History** — Search, open, share, delete completed downloads
-- ⚙️ **Settings** — Light/Dark/System theme, yt-dlp update check, FFmpeg version info, app self-update
+- 🔄 **In-App Dynamic Engine Updater** — Check and dynamically update yt-dlp on-the-fly directly from GitHub Releases zipapp without reinstalling the app (Android 14+ read-only compliant)
+- ⚙️ **Settings** — Light/Dark/System theme, download defaults (including custom format specifier), yt-dlp update check & install, FFmpeg version info, app self-update
 
 ---
 
@@ -73,9 +74,9 @@ A native Android application providing a full-featured GUI for [yt-dlp](https://
 - [Android Studio](https://developer.android.com/studio) Ladybug / Meerkat or later
 - JDK 17 (`java -version` → 17.x)
 - Android SDK with API 35 installed
-- Python 3.10 (via [uv](https://github.com/astral-sh/uv)):
+- Python 3.11 (via [uv](https://github.com/astral-sh/uv)):
   ```powershell
-  uv python install 3.10
+  uv python install 3.11
   ```
 
 ### Build Steps
@@ -100,7 +101,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 |---|---|
 | Language | Kotlin 2.3.20 |
 | UI | Jetpack Compose + Material 3 |
-| Python runtime | Chaquopy 17.1.0 + Python 3.10 |
+| Python runtime | Chaquopy 17.1.0 + Python 3.11 |
 | Downloader | yt-dlp (pip package) |
 | Post-processor | FFmpeg 9.0.2 JNI Shared Libraries |
 | HTTP | OkHttp |

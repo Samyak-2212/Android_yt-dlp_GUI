@@ -50,6 +50,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _ytDlpUpdateState = MutableStateFlow<UpdateCheckState<UpdateInfo>>(UpdateCheckState.Idle)
     val ytDlpUpdateState: StateFlow<UpdateCheckState<UpdateInfo>> = _ytDlpUpdateState.asStateFlow()
 
+    private val _isUpdatingYtDlp = MutableStateFlow(false)
+    val isUpdatingYtDlp: StateFlow<Boolean> = _isUpdatingYtDlp.asStateFlow()
+
+    private val _ytDlpUpdateProgress = MutableStateFlow(0f)
+    val ytDlpUpdateProgress: StateFlow<Float> = _ytDlpUpdateProgress.asStateFlow()
+
+    private val _installedYtDlpVersion = MutableStateFlow(engine.getYtDlpVersion())
+    val installedYtDlpVersion: StateFlow<String> = _installedYtDlpVersion.asStateFlow()
+
     private val _appUpdateState = MutableStateFlow<UpdateCheckState<AppUpdateInfo>>(UpdateCheckState.Idle)
     val appUpdateState: StateFlow<UpdateCheckState<AppUpdateInfo>> = _appUpdateState.asStateFlow()
 
@@ -111,6 +120,40 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }.onFailure { err ->
                 _ytDlpUpdateState.value = UpdateCheckState.Error(err.message ?: "Failed to check for updates")
             }
+        }
+    }
+
+    fun downloadAndApplyYtDlpUpdate(downloadUrl: String) {
+        if (_isUpdatingYtDlp.value) return
+        viewModelScope.launch {
+            _isUpdatingYtDlp.value = true
+            _ytDlpUpdateProgress.value = 0f
+            val result = binaryUpdater.downloadYtDlpUpdate(downloadUrl) { progress ->
+                _ytDlpUpdateProgress.value = progress
+            }
+            if (result.isSuccess) {
+                val reloadRes = engine.reloadEngine()
+                if (reloadRes.isSuccess) {
+                    val updatedVersion = reloadRes.getOrNull() ?: engine.getYtDlpVersion()
+                    _installedYtDlpVersion.value = updatedVersion
+                    _ytDlpUpdateState.value = UpdateCheckState.Success(
+                        UpdateInfo(
+                            currentVersion = updatedVersion,
+                            latestVersion = updatedVersion,
+                            hasUpdate = false
+                        )
+                    )
+                } else {
+                    _ytDlpUpdateState.value = UpdateCheckState.Error(
+                        reloadRes.exceptionOrNull()?.message ?: "Failed to reload updated yt-dlp"
+                    )
+                }
+            } else {
+                _ytDlpUpdateState.value = UpdateCheckState.Error(
+                    result.exceptionOrNull()?.message ?: "Failed to update yt-dlp"
+                )
+            }
+            _isUpdatingYtDlp.value = false
         }
     }
 

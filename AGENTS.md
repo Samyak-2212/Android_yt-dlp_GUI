@@ -8,7 +8,7 @@ This file provides context and constraints for AI coding agents (GitHub Copilot,
 
 A **native Android application** (Jetpack Compose + Material 3) that provides a full GUI for [`yt-dlp`](https://github.com/yt-dlp/yt-dlp), supporting video/audio downloads, subtitle embedding, and YouTube Music metadata.
 
-- **yt-dlp runtime**: Embedded via **Chaquopy** (Python-in-Android) as a pip dependency (`install("yt-dlp")`). Runs directly on-device.
+- **yt-dlp runtime**: Embedded via **Chaquopy** (Python-in-Android) running **Python 3.11** as a pip dependency (`install("yt-dlp")`). Python 3.11 provides the exact ABI balance required for 32-bit `armeabi-v7a` and 64-bit (`arm64-v8a`, `x86_64`) support on API 24+ while satisfying yt-dlp's Python 3.11+ runtime requirement. Runs directly on-device with in-memory zipapp self-updating capability.
 - **FFmpeg backend**: In-process **FFmpeg 9.0.2 JNI Shared Libraries** (`.so`), eliminating subprocess spawning, `execve` W^X security blocks, and Bionic libc missing symbol issues.
 
 ---
@@ -128,6 +128,7 @@ Calling `FFmpegBridge.cancelFFmpeg()` sends `raise(SIGINT)`. FFmpeg's `sigterm_h
 |---|---|---|
 | `is_available()` | `()` | `{"available": bool, "version": str}` |
 | `get_version()` | `()` | version string |
+| `reload_ytdlp()` | `()` | `{"status": "ok"\|"error", "version": str, ...}` |
 | `extract_info(url)` | `(str)` | `{"status": "ok"\|"error", ...metadata...}` |
 | `download(task_id, url, opts_json, ffmpeg_path)` | `(str,str,str,str?)` | `{"status": "complete"\|"error"\|"cancelled", ...}` |
 | `get_progress(task_id)` | `(str)` | `{"status": str, "downloaded_bytes": int, "total_bytes": int, ...}` |
@@ -152,6 +153,9 @@ Calling `FFmpegBridge.cancelFFmpeg()` sends `raise(SIGINT)`. FFmpeg's `sigterm_h
 | R3 | False `COMPLETE` on error | Explicit JSON status parsing in `DownloadService.kt` |
 | R4 | WebM stream-copy failures | FFmpeg 9.0.2 with native container muxing |
 | R5 | FFmpeg first-run download requirement | Bundled FFmpeg 9.0.2 in `jniLibs` for instant startup |
+| R6 | Custom format missing in Settings | Added DataStore key & two-way state in Settings & Download tabs |
+| R7 | yt-dlp Engine self-update blocked | Implemented dynamic GitHub zipapp download, Android 14+ read-only chmod, and in-memory module eviction/reload |
+| R8 | Typing URL flooded yt-dlp threads | Added 600ms debounce and active `Job` cancellation in `DownloadViewModel` |
 
 ---
 

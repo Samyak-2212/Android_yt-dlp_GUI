@@ -79,6 +79,8 @@ class BinaryUpdater(
             val body = response.body?.string() ?: return@withContext Result.failure(Exception("Empty response"))
             val release = json.decodeFromString<GitHubRelease>(body)
             val latestVersion = release.tag_name.removePrefix("v")
+            val dlUrl = release.assets.find { it.name == "yt-dlp" }?.browser_download_url
+                ?: "https://github.com/yt-dlp/yt-dlp/releases/download/$latestVersion/yt-dlp"
 
             val hasUpdate = latestVersion != currentVersion && latestVersion.isNotBlank()
             Result.success(
@@ -86,9 +88,66 @@ class BinaryUpdater(
                     currentVersion = currentVersion,
                     latestVersion = latestVersion,
                     hasUpdate = hasUpdate,
+                    downloadUrl = dlUrl,
                     changelog = release.body
                 )
             )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun downloadYtDlpUpdate(
+        downloadUrl: String,
+        onProgress: (Float) -> Unit
+    ): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(downloadUrl)
+                .header("User-Agent", "YT-DLP-Android")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(Exception("Download failed with HTTP ${response.code}"))
+            }
+
+            val body = response.body ?: return@withContext Result.failure(Exception("Empty body in download response"))
+            val totalBytes = body.contentLength()
+
+            val updatesDir = File(context.filesDir, "updates").apply { mkdirs() }
+            val tempFile = File(updatesDir, "yt-dlp.zip.tmp")
+            val targetFile = File(updatesDir, "yt-dlp.zip")
+
+            tempFile.outputStream().use { output ->
+                body.byteStream().use { input ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        if (totalBytes > 0) {
+                            onProgress(totalRead.toFloat() / totalBytes.toFloat())
+                        }
+                    }
+                }
+            }
+
+            if (targetFile.exists()) {
+                targetFile.setWritable(true)
+                targetFile.delete()
+            }
+
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
+
+            // Android 14+ (API 34) requires dynamically loaded code to be marked read-only
+            targetFile.setReadOnly()
+
+            Result.success(targetFile)
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -10,6 +10,7 @@ import com.ytdlp.android.data.model.VideoInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import org.json.JSONObject
 
 class YtDlpEngine(private val context: Context) {
 
@@ -85,6 +86,20 @@ class YtDlpEngine(private val context: Context) {
             bridge.callAttr("get_version").toString()
         } catch (e: Exception) {
             "Unknown"
+        }
+    }
+
+    fun reloadEngine(): Result<String> {
+        return try {
+            val res = bridge.callAttr("reload_ytdlp").toString()
+            val obj = JSONObject(res)
+            if (obj.optString("status") == "ok") {
+                Result.success(obj.optString("version", getYtDlpVersion()))
+            } else {
+                Result.failure(Exception(obj.optString("error", "Failed to reload yt-dlp")))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

@@ -8,6 +8,23 @@ import sys
 import threading
 import traceback
 
+def _apply_ytdlp_update_path():
+    try:
+        from com.chaquo.python import Python
+        context = Python.getPlatform().getApplication()
+        files_dir = str(context.getFilesDir().getAbsolutePath())
+        update_zip = os.path.join(files_dir, "updates", "yt-dlp.zip")
+        if os.path.exists(update_zip):
+            if update_zip in sys.path:
+                sys.path.remove(update_zip)
+            sys.path.insert(0, update_zip)
+            return update_zip
+    except Exception as e:
+        print(f"Error checking for dynamic yt-dlp update: {e}", flush=True)
+    return None
+
+_apply_ytdlp_update_path()
+
 try:
     import yt_dlp
 except ImportError:
@@ -120,6 +137,26 @@ _setup_jni_ffmpeg()
 _progress_data = {}
 _progress_lock = threading.Lock()
 _cancel_events = {}  # task_id -> threading.Event
+
+
+def reload_ytdlp():
+    """Reload yt_dlp module from dynamic update package if available."""
+    global yt_dlp, _jni_ffmpeg_hooked
+    try:
+        update_path = _apply_ytdlp_update_path()
+        for mod in list(sys.modules.keys()):
+            if mod == 'yt_dlp' or mod.startswith('yt_dlp.'):
+                sys.modules.pop(mod, None)
+        import yt_dlp
+        _jni_ffmpeg_hooked = False
+        _setup_jni_ffmpeg()
+        new_version = yt_dlp.version.__version__ if yt_dlp else "Unknown"
+        print(f"[Dynamic Update] Successfully reloaded yt-dlp version: {new_version}", flush=True)
+        return json.dumps({"status": "ok", "version": new_version, "path": update_path})
+    except Exception as e:
+        err = f"Failed to reload yt-dlp: {e}\n{traceback.format_exc()}"
+        print(err, flush=True)
+        return json.dumps({"status": "error", "error": err})
 
 
 def is_available():

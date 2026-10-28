@@ -54,8 +54,8 @@ kotlin {
 
 chaquopy {
   defaultConfig {
-    version = "3.10"
-    buildPython("C:/Users/naska/AppData/Roaming/uv/python/cpython-3.10-windows-x86_64-none/python.exe")
+    version = "3.11"
+    buildPython("C:/Users/naska/AppData/Roaming/uv/python/cpython-3.11-windows-x86_64-none/python.exe")
     pip {
       install("yt-dlp")
     }

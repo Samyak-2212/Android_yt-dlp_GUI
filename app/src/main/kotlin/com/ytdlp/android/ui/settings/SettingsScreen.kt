@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Refresh
@@ -63,6 +65,9 @@ fun SettingsScreen(
     val defaultCustomFormat by viewModel.defaultCustomFormat.collectAsState()
     val maxConcurrent by viewModel.maxConcurrentDownloads.collectAsState()
     val ytDlpUpdateState by viewModel.ytDlpUpdateState.collectAsState()
+    val isUpdatingYtDlp by viewModel.isUpdatingYtDlp.collectAsState()
+    val ytDlpUpdateProgress by viewModel.ytDlpUpdateProgress.collectAsState()
+    val installedYtDlpVersion by viewModel.installedYtDlpVersion.collectAsState()
     val appUpdateState by viewModel.appUpdateState.collectAsState()
     val isDownloadingAppUpdate by viewModel.isDownloadingAppUpdate.collectAsState()
     val appDownloadProgress by viewModel.appDownloadProgress.collectAsState()
@@ -230,13 +235,16 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = "yt-dlp Engine", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = "Installed version: ${viewModel.getYtDlpCurrentVersion()}",
+                                text = "Installed version: $installedYtDlpVersion",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        OutlinedButton(onClick = { viewModel.checkForYtDlpUpdate() }) {
+                        OutlinedButton(
+                            onClick = { viewModel.checkForYtDlpUpdate() },
+                            enabled = !isUpdatingYtDlp
+                        ) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Check")
@@ -255,11 +263,47 @@ fun SettingsScreen(
                         is UpdateCheckState.Success -> {
                             Spacer(modifier = Modifier.height(8.dp))
                             if (state.data.hasUpdate) {
-                                Text(
-                                    text = "Update available: ${state.data.latestVersion}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Update available: ${state.data.latestVersion}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.downloadAndApplyYtDlpUpdate(state.data.downloadUrl) },
+                                        enabled = !isUpdatingYtDlp
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Download,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Update")
+                                    }
+                                }
+
+                                if (isUpdatingYtDlp) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { ytDlpUpdateProgress },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Downloading & applying: ${(ytDlpUpdateProgress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             } else {
                                 Text(
                                     text = "yt-dlp is up to date!",
