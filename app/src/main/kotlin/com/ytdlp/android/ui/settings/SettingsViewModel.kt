@@ -88,6 +88,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         return binaryUpdater.isFfmpegReady()
     }
 
+    fun getFfmpegVersion(): String {
+        return com.ytdlp.ffmpeg.FFmpegBridge.getFFmpegVersion()
+    }
+
     fun checkForYtDlpUpdate() {
         viewModelScope.launch {
             _ytDlpUpdateState.value = UpdateCheckState.Checking

@@ -274,10 +274,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column {
-                            Text(text = "FFmpeg Binary", style = MaterialTheme.typography.titleSmall)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "FFmpeg Post-Processor", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = if (viewModel.isFfmpegReady()) "Ready (installed)" else "Not downloaded",
+                                text = if (viewModel.isFfmpegReady()) viewModel.getFfmpegVersion() else "Not loaded",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (viewModel.isFfmpegReady()) AccentGreen else MaterialTheme.colorScheme.error
                             )

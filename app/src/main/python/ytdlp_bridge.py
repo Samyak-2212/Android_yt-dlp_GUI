@@ -13,6 +13,109 @@ try:
 except ImportError:
     yt_dlp = None
 
+# Hook FFmpegPostProcessor for in-process JNI execution
+_jni_ffmpeg_hooked = False
+
+def _setup_jni_ffmpeg():
+    global _jni_ffmpeg_hooked
+    if _jni_ffmpeg_hooked:
+        return True
+    try:
+        from com.ytdlp.ffmpeg import FFmpegBridge
+    except Exception as e:
+        print(f"FFmpegBridge JNI not accessible from Python: {e}")
+        return False
+
+    if not yt_dlp:
+        return False
+
+    try:
+        from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor, FFmpegPostProcessorError
+        import itertools
+
+        FFmpegPostProcessor.available = property(lambda self: FFmpegBridge.isAvailable())
+        FFmpegPostProcessor.probe_available = property(lambda self: False)
+        FFmpegPostProcessor._version = "9.0.2"
+        FFmpegPostProcessor.basename = "ffmpeg"
+        FFmpegPostProcessor.check_version = lambda self: None
+
+        def jni_real_run_ffmpeg(self, input_path_opts, output_path_opts, *, expected_retcodes=(0,)):
+            clean_paths = [
+                path[5:] if (isinstance(path, str) and path.startswith('file:')) else str(path)
+                for path, _ in input_path_opts if path
+            ]
+            oldest_mtime = min(
+                (os.stat(p).st_mtime for p in clean_paths if os.path.exists(p)),
+                default=None
+            )
+
+            cmd = ['-y', '-loglevel', 'repeat+info']
+
+            def make_args(file, args, name, number):
+                keys = [f'_{name}{number}', f'_{name}']
+                if name == 'o':
+                    args += ['-movflags', '+faststart']
+                    if number == 1:
+                        keys.append('')
+                try:
+                    args += self._configuration_args(self.basename, keys)
+                except Exception:
+                    pass
+                if name == 'i':
+                    args.append('-i')
+                clean_file = file[5:] if (isinstance(file, str) and file.startswith('file:')) else str(file)
+                return list(args) + [clean_file]
+
+            for arg_type, path_opts in (('i', input_path_opts), ('o', output_path_opts)):
+                cmd += itertools.chain.from_iterable(
+                    make_args(path, list(opts), arg_type, i + 1)
+                    for i, (path, opts) in enumerate(path_opts) if path)
+
+            print(f"[JNI FFmpeg] Executing: {' '.join(cmd)}", flush=True)
+            cmd_json = json.dumps(cmd)
+            retcode = FFmpegBridge.runFFmpegJson(cmd_json)
+            print(f"[JNI FFmpeg] Return code: {retcode}", flush=True)
+
+            if retcode not in expected_retcodes:
+                raise FFmpegPostProcessorError(f"FFmpeg JNI failed with exit code {retcode}")
+
+            for out_path, _ in output_path_opts:
+                if out_path and oldest_mtime is not None:
+                    clean_out = out_path[5:] if (isinstance(out_path, str) and out_path.startswith('file:')) else str(out_path)
+                    try:
+                        self.try_utime(clean_out, oldest_mtime, oldest_mtime)
+                    except Exception:
+                        pass
+            return ""
+
+        def jni_get_audio_codec(self, path):
+            clean_path = path[5:] if (isinstance(path, str) and path.startswith('file:')) else str(path)
+            ext = os.path.splitext(clean_path)[1].lower().lstrip('.')
+            ext_to_codec = {
+                'm4a': 'aac',
+                'aac': 'aac',
+                'mp3': 'mp3',
+                'opus': 'opus',
+                'ogg': 'vorbis',
+                'flac': 'flac',
+                'wav': 'pcm_s16le',
+                'webm': 'opus',
+                'mp4': 'aac',
+            }
+            return ext_to_codec.get(ext, 'aac')
+
+        FFmpegPostProcessor.get_audio_codec = jni_get_audio_codec
+        FFmpegPostProcessor.real_run_ffmpeg = jni_real_run_ffmpeg
+        _jni_ffmpeg_hooked = True
+        print("[JNI FFmpeg] FFmpegPostProcessor hooked successfully to FFmpeg 9.0.2 JNI")
+        return True
+    except Exception as e:
+        print(f"Error hooking FFmpegPostProcessor: {e}")
+        return False
+
+# Attempt hook at import time
+_setup_jni_ffmpeg()
+
 # Thread-safe progress state
 _progress_data = {}
 _progress_lock = threading.Lock()
@@ -91,6 +194,9 @@ def download(task_id, url, opts_json, ffmpeg_path=None):
     """Download media with specified options. Returns JSON result."""
     if not yt_dlp:
         return json.dumps({"status": "error", "task_id": task_id, "error": "yt-dlp is not loaded"})
+
+    # Ensure in-process JNI FFmpeg hook is active
+    _setup_jni_ffmpeg()
 
     try:
         opts = json.loads(opts_json) if isinstance(opts_json, str) else opts_json
@@ -175,7 +281,7 @@ def download(task_id, url, opts_json, ffmpeg_path=None):
 
     # Audio-only extraction
     if opts.get('audio_only', False):
-        audio_fmt = opts.get('audio_format', 'mp3')
+        audio_fmt = opts.get('audio_format', 'm4a')
         audio_qual = opts.get('audio_quality', '192')
         ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
         postprocessors.append({

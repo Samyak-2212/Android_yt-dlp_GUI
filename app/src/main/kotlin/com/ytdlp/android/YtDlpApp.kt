@@ -5,12 +5,23 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
+import com.ytdlp.ffmpeg.FFmpegBridge
 
 class YtDlpApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        initFFmpeg()
         createNotificationChannels()
+    }
+
+    private fun initFFmpeg() {
+        try {
+            FFmpegBridge.init(fromJniLibs = true)
+        } catch (e: Throwable) {
+            Log.w("YtDlpApp", "Bundled FFmpeg JNI load failed; will fallback to FFmpegLoader if needed", e)
+        }
     }
 
     private fun createNotificationChannels() {
