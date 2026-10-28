@@ -1,0 +1,29 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Build outputs
+app/build/
+
+# FFmpeg binary artifacts (downloaded/extracted locally, not tracked in git)
+ffmpeg
+ffmpeg-android-arm.zip
+ffmpeg_khang/
+libc++_shared_arm.so
+*.tar.bz2
+*.bz2
+
+# Android Studio temp
+*.orig
