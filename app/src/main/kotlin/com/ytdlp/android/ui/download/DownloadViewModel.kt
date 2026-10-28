@@ -71,6 +71,13 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             }
         }
         viewModelScope.launch {
+            preferencesManager.defaultCustomFormat.collect { defaultFormat ->
+                if (_customFormat.value.isBlank()) {
+                    _customFormat.value = defaultFormat
+                }
+            }
+        }
+        viewModelScope.launch {
             preferencesManager.defaultOutputDir.collect { dir ->
                 _outputDir.value = dir
             }

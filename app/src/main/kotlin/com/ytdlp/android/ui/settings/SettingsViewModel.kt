@@ -38,6 +38,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val defaultQuality: StateFlow<VideoQuality> = preferencesManager.defaultQuality
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), VideoQuality.P720)
 
+    val defaultCustomFormat: StateFlow<String> = preferencesManager.defaultCustomFormat
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val maxConcurrentDownloads: StateFlow<Int> = preferencesManager.maxConcurrentDownloads
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2)
 
@@ -65,6 +68,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setDefaultQuality(quality: VideoQuality) {
         viewModelScope.launch {
             preferencesManager.setDefaultQuality(quality)
+        }
+    }
+
+    fun setDefaultCustomFormat(format: String) {
+        viewModelScope.launch {
+            preferencesManager.setDefaultCustomFormat(format)
         }
     }
 

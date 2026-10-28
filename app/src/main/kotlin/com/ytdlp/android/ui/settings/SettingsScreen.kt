@@ -60,6 +60,7 @@ fun SettingsScreen(
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
     val defaultQuality by viewModel.defaultQuality.collectAsState()
+    val defaultCustomFormat by viewModel.defaultCustomFormat.collectAsState()
     val maxConcurrent by viewModel.maxConcurrentDownloads.collectAsState()
     val ytDlpUpdateState by viewModel.ytDlpUpdateState.collectAsState()
     val appUpdateState by viewModel.appUpdateState.collectAsState()
@@ -173,6 +174,18 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+
+                    if (defaultQuality == VideoQuality.CUSTOM) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = defaultCustomFormat,
+                            onValueChange = { viewModel.setDefaultCustomFormat(it) },
+                            label = { Text("Custom yt-dlp Format String") },
+                            placeholder = { Text("e.g. bv*[height<=1080]+ba/b") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))

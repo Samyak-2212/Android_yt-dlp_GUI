@@ -25,6 +25,7 @@ class PreferencesManager(private val context: Context) {
     companion object {
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_DEFAULT_QUALITY = stringPreferencesKey("default_quality")
+        val KEY_DEFAULT_CUSTOM_FORMAT = stringPreferencesKey("default_custom_format")
         val KEY_DEFAULT_OUTPUT_DIR = stringPreferencesKey("default_output_dir")
         val KEY_RECENT_PATHS = stringSetPreferencesKey("recent_paths")
         val KEY_MAX_CONCURRENT = intPreferencesKey("max_concurrent_downloads")
@@ -55,6 +56,14 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setDefaultQuality(quality: VideoQuality) {
         context.dataStore.edit { it[KEY_DEFAULT_QUALITY] = quality.name }
+    }
+
+    val defaultCustomFormat: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DEFAULT_CUSTOM_FORMAT] ?: ""
+    }
+
+    suspend fun setDefaultCustomFormat(format: String) {
+        context.dataStore.edit { it[KEY_DEFAULT_CUSTOM_FORMAT] = format }
     }
 
     val defaultOutputDir: Flow<String> = context.dataStore.data.map { prefs ->
