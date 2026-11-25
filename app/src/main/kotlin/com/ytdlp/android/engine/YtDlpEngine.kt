@@ -44,9 +44,23 @@ class YtDlpEngine(private val context: Context) {
     suspend fun getAvailableSubtitles(url: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val responseJson = bridge.callAttr("get_available_subtitles", url).toString()
-            val pyObj = bridge.callAttr("get_available_subtitles", url)
-            // Just return parsed strings or empty
-            Result.success(emptyList())
+            val obj = JSONObject(responseJson)
+            if (obj.optString("status") == "ok") {
+                val langs = linkedSetOf<String>()
+                obj.optJSONArray("manual")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        arr.optString(i).takeIf { it.isNotBlank() }?.let { langs.add(it) }
+                    }
+                }
+                obj.optJSONArray("automatic")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        arr.optString(i).takeIf { it.isNotBlank() }?.let { langs.add(it) }
+                    }
+                }
+                Result.success(langs.toList())
+            } else {
+                Result.failure(Exception(obj.optString("error", "Failed to fetch subtitles")))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

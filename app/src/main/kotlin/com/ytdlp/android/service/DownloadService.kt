@@ -6,15 +6,18 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.ytdlp.android.MainActivity
 import com.ytdlp.android.R
 import com.ytdlp.android.YtDlpApp
 import com.ytdlp.android.data.model.DownloadStatus
 import com.ytdlp.android.data.model.DownloadTask
+import com.ytdlp.android.data.preferences.PreferencesManager
 import com.ytdlp.android.data.repository.DownloadRepository
 import com.ytdlp.android.engine.YtDlpEngine
 import com.ytdlp.android.updater.BinaryUpdater
@@ -23,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -32,6 +36,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 @Serializable
 data class DownloadBridgeOptions(
@@ -40,6 +45,7 @@ data class DownloadBridgeOptions(
     val download_lyrics: Boolean = false,
     val write_subtitles: Boolean = false,
     val embed_subtitles: Boolean = false,
+    val download_separate_file: Boolean = false,
     val subtitle_langs: List<String> = emptyList(),
     val subtitle_format: String = "srt",
     val auto_subtitles: Boolean = false,
@@ -50,11 +56,13 @@ class DownloadService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val activeJobs = ConcurrentHashMap<String, Job>()
+    private val runningDownloads = AtomicInteger(0)
     private val json = Json { ignoreUnknownKeys = true }
 
     private lateinit var engine: YtDlpEngine
     private lateinit var repository: DownloadRepository
     private lateinit var binaryUpdater: BinaryUpdater
+    private lateinit var preferencesManager: PreferencesManager
     private lateinit var notificationManager: NotificationManager
 
     override fun onCreate() {
@@ -62,6 +70,7 @@ class DownloadService : Service() {
         engine = YtDlpEngine.getInstance(applicationContext)
         repository = DownloadRepository.getInstance(applicationContext)
         binaryUpdater = BinaryUpdater.getInstance(applicationContext)
+        preferencesManager = PreferencesManager(applicationContext)
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
@@ -74,7 +83,17 @@ class DownloadService : Service() {
                 if (taskJson != null) {
                     try {
                         val task = json.decodeFromString<DownloadTask>(taskJson)
-                        startForeground(NOTIFICATION_ID, buildForegroundNotification("Starting download...", 0))
+                        val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        } else {
+                            0
+                        }
+                        ServiceCompat.startForeground(
+                            this,
+                            NOTIFICATION_ID,
+                            buildForegroundNotification("Starting download...", 0),
+                            fgType
+                        )
                         launchDownloadTask(task)
                     } catch (_: Exception) {}
                 }
@@ -91,118 +110,139 @@ class DownloadService : Service() {
 
     private fun launchDownloadTask(task: DownloadTask) {
         val job = serviceScope.launch {
-            repository.updateTask(task.copy(status = DownloadStatus.DOWNLOADING))
-
-            // Build options JSON for python bridge
-            val defaultDir = if (task.outputDir.isNotBlank()) {
-                task.outputDir
-            } else {
-                val base = getExternalFilesDir(null) ?: filesDir
-                File(base, "Downloads").apply { mkdirs() }.absolutePath
+            while (runningDownloads.get() >= preferencesManager.maxConcurrentDownloads.first()) {
+                delay(500)
             }
+            runningDownloads.incrementAndGet()
+            try {
+                repository.updateTask(task.copy(status = DownloadStatus.DOWNLOADING))
 
-            val formatSpec = when {
-                task.customFormat.isNotBlank() -> task.customFormat
-                task.quality.formatSpec.isNotBlank() -> task.quality.formatSpec
-                else -> ""
-            }
-
-            val bridgeOptions = DownloadBridgeOptions(
-                output_dir = defaultDir,
-                audio_only = task.quality.isAudioOnly(),
-                download_lyrics = task.downloadLyrics,
-                write_subtitles = task.subtitleConfig.enabled,
-                embed_subtitles = task.subtitleConfig.enabled && task.subtitleConfig.embedInVideo,
-                subtitle_langs = task.subtitleConfig.languages,
-                subtitle_format = task.subtitleConfig.format,
-                auto_subtitles = task.subtitleConfig.enabled && task.subtitleConfig.includeAutoGenerated,
-                format = formatSpec
-            )
-
-            val optionsJson = json.encodeToString(bridgeOptions)
-            val ffmpegPath = binaryUpdater.getFfmpegPath()
-
-            // Launch progress polling
-            val progressJob = launch {
-                while (isActive) {
-                    delay(600)
-                    val prog = engine.getProgress(task.id)
-                    if (prog.status == "downloading" || prog.downloaded_bytes > 0) {
-                        repository.updateTask(
-                            task.copy(
-                                status = DownloadStatus.DOWNLOADING,
-                                progress = prog.progressFraction,
-                                speed = prog.speed,
-                                eta = prog.eta,
-                                downloadedBytes = prog.downloaded_bytes,
-                                totalBytes = prog.total_bytes,
-                                filePath = prog.filename
-                            )
-                        )
-                        updateNotification(
-                            "Downloading: ${task.title.ifEmpty { "Media" }}",
-                            prog.progressPercent
-                        )
-                    }
+                // Build options JSON for python bridge
+                val defaultDir = if (task.outputDir.isNotBlank()) {
+                    task.outputDir
+                } else {
+                    val base = getExternalFilesDir(null) ?: filesDir
+                    File(base, "Downloads").apply { mkdirs() }.absolutePath
                 }
-            }
 
-            // Execute Python download
-            val result = engine.download(task.id, task.url, optionsJson, ffmpegPath)
-            progressJob.cancel()
-
-            result.onSuccess { resJson ->
-                Log.i(TAG, "Download result for ${task.id}: $resJson")
-                // Parse the JSON status field from the Python bridge response
-                val statusField = try {
-                    json.parseToJsonElement(resJson).jsonObject["status"]?.jsonPrimitive?.content ?: "complete"
-                } catch (_: Exception) { "complete" }
-
-                val errorMsg = try {
-                    json.parseToJsonElement(resJson).jsonObject["error"]?.jsonPrimitive?.content
-                } catch (_: Exception) { null }
-
-                val finalProg = engine.getProgress(task.id)
-                val finalPath = if (finalProg.filename.isNotBlank()) finalProg.filename else task.filePath
-
-                when (statusField) {
-                    "complete" -> {
-                        val completedTask = task.copy(
-                            status = DownloadStatus.COMPLETE,
-                            progress = 1.0f,
-                            filePath = finalPath
-                        )
-                        repository.updateTask(completedTask)
-                        showFinishedNotification(completedTask, success = true)
-                    }
-                    "cancelled" -> {
-                        val cancelledTask = task.copy(status = DownloadStatus.CANCELLED)
-                        repository.updateTask(cancelledTask)
-                        // No notification for user-initiated cancels
-                    }
-                    else -> {
-                        // "error" or any unexpected status
-                        val failedTask = task.copy(
-                            status = DownloadStatus.ERROR,
-                            error = errorMsg ?: "Download failed (status: $statusField)"
-                        )
-                        repository.updateTask(failedTask)
-                        showFinishedNotification(failedTask, success = false)
-                    }
+                val formatSpec = when {
+                    task.customFormat.isNotBlank() -> task.customFormat
+                    task.quality.formatSpec.isNotBlank() -> task.quality.formatSpec
+                    else -> ""
                 }
-            }.onFailure { err ->
-                val failedTask = task.copy(
-                    status = DownloadStatus.ERROR,
-                    error = err.message ?: "Download failed"
+
+                val bridgeOptions = DownloadBridgeOptions(
+                    output_dir = defaultDir,
+                    audio_only = task.quality.isAudioOnly(),
+                    download_lyrics = task.downloadLyrics,
+                    write_subtitles = task.subtitleConfig.enabled,
+                    embed_subtitles = task.subtitleConfig.enabled && task.subtitleConfig.embedInVideo,
+                    download_separate_file = task.subtitleConfig.enabled && task.subtitleConfig.downloadSeparateFile,
+                    subtitle_langs = task.subtitleConfig.languages,
+                    subtitle_format = task.subtitleConfig.format,
+                    auto_subtitles = task.subtitleConfig.enabled && task.subtitleConfig.includeAutoGenerated,
+                    format = formatSpec
                 )
-                repository.updateTask(failedTask)
-                showFinishedNotification(failedTask, success = false)
-            }
 
-            activeJobs.remove(task.id)
-            if (activeJobs.isEmpty()) {
-                stopForeground(STOP_FOREGROUND_DETACH)
-                stopSelf()
+                val optionsJson = json.encodeToString(bridgeOptions)
+                val ffmpegPath = binaryUpdater.getFfmpegPath()
+
+                // Launch progress polling
+                val progressJob = launch {
+                    while (isActive) {
+                        delay(600)
+                        val prog = engine.getProgress(task.id)
+                        if (prog.status == "postprocessing") {
+                            repository.updateTask(
+                                task.copy(
+                                    status = DownloadStatus.MERGING,
+                                    progress = 1.0f,
+                                    filePath = prog.filename.ifBlank { task.filePath }
+                                )
+                            )
+                            updateNotification(
+                                "Processing: ${task.title.ifEmpty { "Media" }}",
+                                100
+                            )
+                        } else if (prog.status == "downloading" || prog.downloaded_bytes > 0) {
+                            repository.updateTask(
+                                task.copy(
+                                    status = DownloadStatus.DOWNLOADING,
+                                    progress = prog.progressFraction,
+                                    speed = prog.speed,
+                                    eta = prog.eta,
+                                    downloadedBytes = prog.downloaded_bytes,
+                                    totalBytes = prog.total_bytes,
+                                    filePath = prog.filename
+                                )
+                            )
+                            updateNotification(
+                                "Downloading: ${task.title.ifEmpty { "Media" }}",
+                                prog.progressPercent
+                            )
+                        }
+                    }
+                }
+
+                // Execute Python download
+                val result = engine.download(task.id, task.url, optionsJson, ffmpegPath)
+                progressJob.cancel()
+
+                result.onSuccess { resJson ->
+                    Log.i(TAG, "Download result for ${task.id}: $resJson")
+                    val resObj = try {
+                        json.parseToJsonElement(resJson).jsonObject
+                    } catch (_: Exception) { null }
+
+                    val statusField = resObj?.get("status")?.jsonPrimitive?.content ?: "complete"
+                    val errorMsg = resObj?.get("error")?.jsonPrimitive?.content
+                    val resFilename = resObj?.get("filename")?.jsonPrimitive?.content ?: ""
+
+                    val finalProg = engine.getProgress(task.id)
+                    val finalPath = when {
+                        resFilename.isNotBlank() -> resFilename
+                        finalProg.filename.isNotBlank() -> finalProg.filename
+                        else -> task.filePath
+                    }
+
+                    when (statusField) {
+                        "complete" -> {
+                            val completedTask = task.copy(
+                                status = DownloadStatus.COMPLETE,
+                                progress = 1.0f,
+                                filePath = finalPath
+                            )
+                            repository.updateTask(completedTask)
+                            showFinishedNotification(completedTask, success = true)
+                        }
+                        "cancelled" -> {
+                            val cancelledTask = task.copy(status = DownloadStatus.CANCELLED)
+                            repository.updateTask(cancelledTask)
+                        }
+                        else -> {
+                            val failedTask = task.copy(
+                                status = DownloadStatus.ERROR,
+                                error = errorMsg ?: "Download failed (status: $statusField)"
+                            )
+                            repository.updateTask(failedTask)
+                            showFinishedNotification(failedTask, success = false)
+                        }
+                    }
+                }.onFailure { err ->
+                    val failedTask = task.copy(
+                        status = DownloadStatus.ERROR,
+                        error = err.message ?: "Download failed"
+                    )
+                    repository.updateTask(failedTask)
+                    showFinishedNotification(failedTask, success = false)
+                }
+            } finally {
+                runningDownloads.decrementAndGet()
+                activeJobs.remove(task.id)
+                if (activeJobs.isEmpty()) {
+                    ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_DETACH)
+                    stopSelf()
+                }
             }
         }
 
@@ -220,7 +260,7 @@ class DownloadService : Service() {
         }
 
         if (activeJobs.isEmpty()) {
-            stopForeground(STOP_FOREGROUND_DETACH)
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
             stopSelf()
         }
     }
@@ -246,7 +286,9 @@ class DownloadService : Service() {
     }
 
     private fun updateNotification(contentText: String, progress: Int) {
-        notificationManager.notify(NOTIFICATION_ID, buildForegroundNotification(contentText, progress))
+        try {
+            notificationManager.notify(NOTIFICATION_ID, buildForegroundNotification(contentText, progress))
+        } catch (_: SecurityException) {}
     }
 
     private fun showFinishedNotification(task: DownloadTask, success: Boolean) {
@@ -266,7 +308,9 @@ class DownloadService : Service() {
             .setAutoCancel(true)
             .build()
 
-        notificationManager.notify(task.id.hashCode(), notif)
+        try {
+            notificationManager.notify(task.id.hashCode(), notif)
+        } catch (_: SecurityException) {}
     }
 
     override fun onDestroy() {
@@ -300,7 +344,9 @@ class DownloadService : Service() {
                 action = ACTION_CANCEL_DOWNLOAD
                 putExtra(EXTRA_TASK_ID, taskId)
             }
-            context.startService(intent)
+            try {
+                context.startService(intent)
+            } catch (_: Exception) {}
         }
     }
 }

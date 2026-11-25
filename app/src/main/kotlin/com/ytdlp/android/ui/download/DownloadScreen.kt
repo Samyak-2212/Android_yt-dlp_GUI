@@ -225,7 +225,7 @@ fun DownloadScreen(
                     DownloadItemCard(
                         task = task,
                         onCancel = { viewModel.cancelTask(it) },
-                        onDismiss = {}
+                        onDismiss = { viewModel.dismissTask(it) }
                     )
                 }
             }

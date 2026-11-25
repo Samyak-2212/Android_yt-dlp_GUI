@@ -82,7 +82,9 @@ class BinaryUpdater(
             val dlUrl = release.assets.find { it.name == "yt-dlp" }?.browser_download_url
                 ?: "https://github.com/yt-dlp/yt-dlp/releases/download/$latestVersion/yt-dlp"
 
-            val hasUpdate = latestVersion != currentVersion && latestVersion.isNotBlank()
+            val hasUpdate = latestVersion.isNotBlank() &&
+                (currentVersion == "Not installed" || currentVersion == "Unknown" ||
+                    AppUpdater.isVersionNewer(latestVersion, currentVersion))
             Result.success(
                 UpdateInfo(
                     currentVersion = currentVersion,

@@ -48,13 +48,30 @@ def _setup_jni_ffmpeg():
 
     try:
         from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor, FFmpegPostProcessorError
+        from yt_dlp.utils import variadic
         import itertools
 
         FFmpegPostProcessor.available = property(lambda self: FFmpegBridge.isAvailable())
         FFmpegPostProcessor.probe_available = property(lambda self: False)
-        FFmpegPostProcessor._version = "9.0.2"
+        FFmpegPostProcessor._version = "9.1"
+        FFmpegPostProcessor._probe_version = None
         FFmpegPostProcessor.basename = "ffmpeg"
+        FFmpegPostProcessor.probe_basename = None
+        FFmpegPostProcessor.executable = property(lambda self: "ffmpeg")
+        FFmpegPostProcessor.probe_executable = property(lambda self: None)
+        FFmpegPostProcessor._features = {
+            'fdk': False,
+            'setts': True,
+            'needs_adtstoasc': False,
+        }
+        FFmpegPostProcessor._determine_executables = lambda self: {'ffmpeg': 'ffmpeg'}
         FFmpegPostProcessor.check_version = lambda self: None
+        FFmpegPostProcessor._get_real_video_duration = lambda self, filepath, fatal=True: None
+
+        def safe_fixup_chapters(self, info):
+            return None
+
+        FFmpegPostProcessor._fixup_chapters = safe_fixup_chapters
 
         def jni_real_run_ffmpeg(self, input_path_opts, output_path_opts, *, expected_retcodes=(0,)):
             clean_paths = [
@@ -80,8 +97,12 @@ def _setup_jni_ffmpeg():
                     pass
                 if name == 'i':
                     args.append('-i')
-                clean_file = file[5:] if (isinstance(file, str) and file.startswith('file:')) else str(file)
-                return list(args) + [clean_file]
+                raw_file = str(file)
+                if raw_file != '-' and not raw_file.startswith(('http://', 'https://', 'file:')):
+                    ffmpeg_arg = 'file:' + raw_file
+                else:
+                    ffmpeg_arg = raw_file
+                return list(args) + [ffmpeg_arg]
 
             for arg_type, path_opts in (('i', input_path_opts), ('o', output_path_opts)):
                 cmd += itertools.chain.from_iterable(
@@ -93,7 +114,7 @@ def _setup_jni_ffmpeg():
             retcode = FFmpegBridge.runFFmpegJson(cmd_json)
             print(f"[JNI FFmpeg] Return code: {retcode}", flush=True)
 
-            if retcode not in expected_retcodes:
+            if retcode not in variadic(expected_retcodes):
                 raise FFmpegPostProcessorError(f"FFmpeg JNI failed with exit code {retcode}")
 
             for out_path, _ in output_path_opts:
@@ -118,13 +139,16 @@ def _setup_jni_ffmpeg():
                 'wav': 'pcm_s16le',
                 'webm': 'opus',
                 'mp4': 'aac',
+                'mka': 'opus',
+                'mkv': 'aac',
+                'ts': 'aac',
             }
             return ext_to_codec.get(ext, 'aac')
 
         FFmpegPostProcessor.get_audio_codec = jni_get_audio_codec
         FFmpegPostProcessor.real_run_ffmpeg = jni_real_run_ffmpeg
         _jni_ffmpeg_hooked = True
-        print("[JNI FFmpeg] FFmpegPostProcessor hooked successfully to FFmpeg 9.0.2 JNI")
+        print("[JNI FFmpeg] FFmpegPostProcessor hooked successfully to FFmpeg 9.1 JNI")
         return True
     except Exception as e:
         print(f"Error hooking FFmpegPostProcessor: {e}")
@@ -181,6 +205,7 @@ def extract_info(url):
         'no_warnings': True,
         'skip_download': True,
         'extract_flat': False,
+        'noplaylist': True,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -261,13 +286,14 @@ def download(task_id, url, opts_json, ffmpeg_path=None):
     ydl_opts = {
         'outtmpl': outtmpl,
         'progress_hooks': [lambda d: _progress_hook(task_id, d)],
+        'postprocessor_hooks': [lambda d: _postprocessor_hook(task_id, d)],
+        'post_hooks': [lambda filepath: _post_hook(task_id, filepath)],
+        'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
     }
 
     # Format specification
-    # Prefer mp4 video + m4a audio to avoid WebM container issues with FFmpeg 3.3.2
-    # (static binary used on Android 7/8 doesn't support WebM->MP4 stream copy)
     format_spec = opts.get('format')
     if format_spec:
         ydl_opts['format'] = format_spec
@@ -278,23 +304,21 @@ def download(task_id, url, opts_json, ffmpeg_path=None):
             '/best[height<=720]'
         )
 
-    # FFmpeg location (downloaded binary)
-    if ffmpeg_path and os.path.exists(ffmpeg_path):
+    # FFmpeg location (only if a non-JNI binary path is explicitly provided)
+    if ffmpeg_path and ffmpeg_path != "jni" and os.path.exists(ffmpeg_path):
         ffmpeg_dir = os.path.dirname(ffmpeg_path)
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
-        # Reset yt-dlp's internal FFmpeg location cache so it picks up the new path
         try:
             from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
             FFmpegPostProcessor._ffmpeg_location = yt_dlp.utils.MISSING
         except Exception:
             pass
-        # Pass -strict -2 to allow experimental codecs in old FFmpeg
-        ydl_opts['postprocessor_args'] = {
-            'ffmpeg': ['-strict', '-2']
-        }
 
-    # Merge format — always mp4 for maximum compatibility
-    ydl_opts['merge_output_format'] = opts.get('merge_format', 'mp4')
+    audio_only = bool(opts.get('audio_only', False))
+
+    # Merge format — always mp4 for maximum compatibility when downloading video
+    if not audio_only:
+        ydl_opts['merge_output_format'] = opts.get('merge_format', 'mp4')
 
     # Subtitles
     if opts.get('write_subtitles', False):
@@ -310,14 +334,14 @@ def download(task_id, url, opts_json, ffmpeg_path=None):
 
     postprocessors = []
 
-    if opts.get('embed_subtitles', False):
+    if opts.get('embed_subtitles', False) and not audio_only:
         postprocessors.append({
             'key': 'FFmpegEmbedSubtitle',
-            'already_have_subtitle': False
+            'already_have_subtitle': bool(opts.get('download_separate_file', False))
         })
 
     # Audio-only extraction
-    if opts.get('audio_only', False):
+    if audio_only:
         audio_fmt = opts.get('audio_format', 'm4a')
         audio_qual = opts.get('audio_quality', '192')
         ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
@@ -409,6 +433,50 @@ def _progress_hook(task_id, d):
             "eta": eta,
             "filename": filename,
         }
+
+
+def _postprocessor_hook(task_id, d):
+    """Called by yt-dlp during post-processing to capture the final output filepath."""
+    event = _cancel_events.get(task_id)
+    if event and event.is_set():
+        raise yt_dlp.utils.DownloadCancelled("Cancelled by user")
+
+    status = d.get("status", "")
+    info_dict = d.get("info_dict") or {}
+    filepath = info_dict.get("filepath") or info_dict.get("_filename") or ""
+
+    with _progress_lock:
+        existing = _progress_data.get(task_id, {
+            "status": "postprocessing",
+            "downloaded_bytes": 0,
+            "total_bytes": 0,
+            "speed": 0,
+            "eta": 0,
+            "filename": "",
+        })
+        if status == "finished" and filepath:
+            existing["filename"] = filepath
+        elif status == "started":
+            existing["status"] = "postprocessing"
+        _progress_data[task_id] = existing
+
+
+def _post_hook(task_id, filepath):
+    """Called by yt-dlp after all postprocessors and file moves complete."""
+    if not filepath:
+        return
+    with _progress_lock:
+        existing = _progress_data.get(task_id, {
+            "status": "finished",
+            "downloaded_bytes": 0,
+            "total_bytes": 0,
+            "speed": 0,
+            "eta": 0,
+            "filename": "",
+        })
+        existing["filename"] = filepath
+        existing["status"] = "finished"
+        _progress_data[task_id] = existing
 
 
 def _extract_format_list(info):

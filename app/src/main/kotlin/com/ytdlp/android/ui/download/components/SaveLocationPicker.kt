@@ -1,8 +1,13 @@
 package com.ytdlp.android.ui.download.components
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,11 +41,18 @@ fun SaveLocationPicker(
     recentPaths: Set<String>,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            val path = uri.path ?: uri.toString()
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+            val path = resolveTreeUriToPath(uri)
             onPathSelected(path, uri)
         }
     }
@@ -112,4 +124,16 @@ fun SaveLocationPicker(
             }
         }
     }
+}
+
+private fun resolveTreeUriToPath(uri: Uri): String {
+    if (uri.authority == "com.android.externalstorage.documents") {
+        val docId = DocumentsContract.getTreeDocumentId(uri) ?: return uri.path ?: uri.toString()
+        val parts = docId.split(":", limit = 2)
+        if (parts.size == 2 && parts[0].equals("primary", ignoreCase = true)) {
+            val base = Environment.getExternalStorageDirectory()
+            return if (parts[1].isBlank()) base.absolutePath else File(base, parts[1]).absolutePath
+        }
+    }
+    return uri.path ?: uri.toString()
 }

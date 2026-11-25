@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.ytdlp.android.data.model.DownloadTask
 import com.ytdlp.android.data.model.VideoQuality
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -39,7 +40,7 @@ class PreferencesManager(private val context: Context) {
 
     val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_THEME_MODE] ?: "SYSTEM"
-    }
+    }.distinctUntilChanged()
 
     suspend fun setThemeMode(mode: String) {
         context.dataStore.edit { it[KEY_THEME_MODE] = mode }
@@ -52,7 +53,7 @@ class PreferencesManager(private val context: Context) {
         } catch (_: Exception) {
             VideoQuality.P720
         }
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultQuality(quality: VideoQuality) {
         context.dataStore.edit { it[KEY_DEFAULT_QUALITY] = quality.name }
@@ -60,7 +61,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultCustomFormat: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_CUSTOM_FORMAT] ?: ""
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultCustomFormat(format: String) {
         context.dataStore.edit { it[KEY_DEFAULT_CUSTOM_FORMAT] = format }
@@ -68,7 +69,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultOutputDir: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_OUTPUT_DIR] ?: ""
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultOutputDir(path: String) {
         context.dataStore.edit { prefs ->
@@ -83,11 +84,11 @@ class PreferencesManager(private val context: Context) {
 
     val recentPaths: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[KEY_RECENT_PATHS] ?: emptySet()
-    }
+    }.distinctUntilChanged()
 
     val maxConcurrentDownloads: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[KEY_MAX_CONCURRENT] ?: 2
-    }
+    }.distinctUntilChanged()
 
     suspend fun setMaxConcurrentDownloads(max: Int) {
         context.dataStore.edit { it[KEY_MAX_CONCURRENT] = max.coerceIn(1, 5) }
@@ -95,7 +96,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultEmbedSubtitles: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_EMBED_SUBS] ?: true
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultEmbedSubtitles(enabled: Boolean) {
         context.dataStore.edit { it[KEY_DEFAULT_EMBED_SUBS] = enabled }
@@ -103,7 +104,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultSubtitleLang: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_SUB_LANG] ?: "en"
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultSubtitleLang(lang: String) {
         context.dataStore.edit { it[KEY_DEFAULT_SUB_LANG] = lang }
@@ -111,7 +112,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultAutoSubtitles: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_AUTO_SUBS] ?: true
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultAutoSubtitles(enabled: Boolean) {
         context.dataStore.edit { it[KEY_DEFAULT_AUTO_SUBS] = enabled }
@@ -119,7 +120,7 @@ class PreferencesManager(private val context: Context) {
 
     val defaultDownloadLyrics: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_DOWNLOAD_LYRICS] ?: false
-    }
+    }.distinctUntilChanged()
 
     suspend fun setDefaultDownloadLyrics(enabled: Boolean) {
         context.dataStore.edit { it[KEY_DEFAULT_DOWNLOAD_LYRICS] = enabled }
@@ -127,7 +128,7 @@ class PreferencesManager(private val context: Context) {
 
     val isSetupComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_IS_SETUP_COMPLETE] ?: false
-    }
+    }.distinctUntilChanged()
 
     suspend fun setSetupComplete(complete: Boolean) {
         context.dataStore.edit { it[KEY_IS_SETUP_COMPLETE] = complete }

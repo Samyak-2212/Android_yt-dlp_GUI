@@ -16,9 +16,11 @@ local.properties
 
 # Build outputs
 app/build/
+__pycache__/
+*.py[cod]
 
 # FFmpeg binary artifacts (downloaded/extracted locally, not tracked in git)
-ffmpeg
+/ffmpeg
 ffmpeg-android-arm.zip
 ffmpeg_khang/
 libc++_shared_arm.so

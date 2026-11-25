@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Share
@@ -218,6 +219,13 @@ fun DownloadItemCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Open")
                         }
+                    }
+                    IconButton(onClick = { onDismiss(task.id) }) {
+                        Icon(Icons.Default.Close, contentDescription = "Dismiss")
+                    }
+                } else if (task.status == DownloadStatus.COMPLETE || task.status == DownloadStatus.ERROR || task.status == DownloadStatus.CANCELLED) {
+                    IconButton(onClick = { onDismiss(task.id) }) {
+                        Icon(Icons.Default.Close, contentDescription = "Dismiss")
                     }
                 }
             }

@@ -8,15 +8,15 @@ This file provides context and constraints for AI coding agents (GitHub Copilot,
 
 A **native Android application** (Jetpack Compose + Material 3) that provides a full GUI for [`yt-dlp`](https://github.com/yt-dlp/yt-dlp), supporting video/audio downloads, subtitle embedding, and YouTube Music metadata.
 
-- **yt-dlp runtime**: Embedded via **Chaquopy** (Python-in-Android) running **Python 3.11** as a pip dependency (`install("yt-dlp")`). Python 3.11 provides the exact ABI balance required for 32-bit `armeabi-v7a` and 64-bit (`arm64-v8a`, `x86_64`) support on API 24+ while satisfying yt-dlp's Python 3.11+ runtime requirement. Runs directly on-device with in-memory zipapp self-updating capability.
-- **FFmpeg backend**: In-process **FFmpeg 9.0.2 JNI Shared Libraries** (`.so`), eliminating subprocess spawning, `execve` W^X security blocks, and Bionic libc missing symbol issues.
+- **yt-dlp runtime**: Embedded via **Chaquopy** (Python-in-Android) running **Python 3.11** as a pip dependency (`install("yt-dlp==2026.11.23")`). Python 3.11 provides the exact ABI balance required for 32-bit `armeabi-v7a` and 64-bit (`arm64-v8a`, `x86_64`) support on API 24+ while satisfying yt-dlp's Python 3.11+ runtime requirement. Runs directly on-device with in-memory zipapp self-updating capability.
+- **FFmpeg backend**: In-process **FFmpeg 9.1 JNI Shared Libraries** (`.so`), eliminating subprocess spawning, `execve` W^X security blocks, and Bionic libc missing symbol issues.
 
 ---
 
 ## 🚫 Hard Constraints
 
 ### Do NOT touch the yt-dlp source tree
-The directory `c:/Users/naska/OneDrive/Documents/GitHub/yt-dlp` is a **separate repository** and must **never be modified**. yt-dlp is integrated only as a Chaquopy pip dependency (`install("yt-dlp")` in `app/build.gradle.kts`).
+The directory `c:/Users/naska/OneDrive/Documents/GitHub/yt-dlp` is a **separate repository** and must **never be modified**. yt-dlp is integrated only as a Chaquopy pip dependency (`install("yt-dlp==2026.11.23")` in `app/build.gradle.kts`).
 
 ### Android version compatibility
 The app **must run on Android 7.0+ (API 24+) through Android 15+ (API 35+)**.
@@ -31,7 +31,7 @@ The app **must run on Android 7.0+ (API 24+) through Android 15+ (API 35+)**.
 
 ```
 app/src/main/
-├── jniLibs/                         # FFmpeg 9.0.2 pre-built shared libraries
+├── jniLibs/                         # FFmpeg 9.1 pre-built shared libraries
 │   ├── arm64-v8a/                   # libavcodec, libavformat, libavfilter, libavutil,
 │   ├── armeabi-v7a/                 # libswresample, libswscale, libffmpeg_jni (.so)
 │   └── x86_64/                      # 16 KB page-aligned, compiled for API 24+
@@ -68,12 +68,12 @@ app/src/main/
 | Decision | Rationale |
 |---|---|
 | Chaquopy for Python runtime | Runs yt-dlp natively on-device without subprocess or server |
-| FFmpeg 9.0.2 JNI Shared Libraries | In-process execution via `libffmpeg_jni.so`; avoids Android 10+ W^X `execve` blocks |
+| FFmpeg 9.1 JNI Shared Libraries | In-process execution via `libffmpeg_jni.so`; avoids Android 10+ W^X `execve` blocks |
 | Bundled `jniLibs/` | Zero-setup first run, offline operation, 100% compliant on API 24–35+ |
 | `FFmpegLoader` (Approach A) | Dynamic fallback: downloads `.so`, sets `file.setReadOnly()`, loads in dependency order |
-| In-Process Python Hook | `FFmpegPostProcessor.real_run_ffmpeg` in Python calls `FFmpegBridge.runFFmpegList` |
+| In-Process Python Hook | `FFmpegPostProcessor.real_run_ffmpeg` in Python calls `FFmpegBridge.runFFmpegJson` |
 | Foreground Service | Keeps downloads alive when app is backgrounded; required for Android O+ |
-| DataStore Preferences | Async settings storage replacing deprecated SharedPreferences |
+| DataStore Preferences | Async settings storage + serialized download history persistence |
 
 ---
 
@@ -86,9 +86,9 @@ Standalone ELF binaries placed in `context.filesDir` fail on modern Android:
 3. **Outdated Binaries**: Static binaries targeting API 21 were stuck at FFmpeg 3.3.2 (2017).
 
 ### The In-Process JNI Architecture
-Instead of spawning a child process, FFmpeg 9.0.2 is compiled into 7 shared libraries:
-- `libavcodec.so` (decoders / encoders: AAC, Opus, FLAC, H.264, VP9, AV1)
-- `libavformat.so` (muxers / demuxers: MP4, Matroska, OGG, WebM, MP3)
+Instead of spawning a child process, FFmpeg 9.1 is compiled into 7 shared libraries:
+- `libavcodec.so` (decoders / encoders: AAC, Opus, FLAC, ALAC, H.264, HEVC, VP9, AV1, SRT/ASS/WebVTT/mov_text)
+- `libavformat.so` (muxers / demuxers: MP4, MOV, iPod/M4A, Matroska, WebM, OGG, Opus, MP3, SRT/ASS/WebVTT)
 - `libavfilter.so` (audio resampling, scaling, volume filters)
 - `libavutil.so` (core utilities and math)
 - `libswresample.so` (audio conversion)
@@ -101,24 +101,24 @@ App Startup (YtDlpApp.onCreate)
   → FFmpegBridge.init(fromJniLibs = true)
   → System.loadLibrary() in strict dependency order:
       avutil → swresample → swscale → avcodec → avformat → avfilter → ffmpeg_jni
-  → JNI_OnLoad fires: "FFmpeg 9.0.2 JNI library loaded"
+  → JNI_OnLoad fires: "FFmpeg 9.1 JNI library loaded"
 ```
 
 ### Python Bridge Interception (`ytdlp_bridge.py`)
-yt-dlp's `FFmpegPostProcessor.real_run_ffmpeg` is monkey-patched:
+yt-dlp's `FFmpegPostProcessor.real_run_ffmpeg` is monkey-patched (along with `_features`, `executable`, and `_fixup_chapters`):
 ```python
 from com.ytdlp.ffmpeg import FFmpegBridge
 
 def jni_real_run_ffmpeg(self, input_path_opts, output_path_opts, *, expected_retcodes=(0,)):
-    # Build CLI options list (-i in.mp4 -i in.m4a -c:v copy -c:a copy out.mp4)
+    # Build CLI options list (-i file:in.mp4 -i file:in.m4a -c:v copy -c:a copy file:out.mp4)
     # Execute in-process via JNI:
-    retcode = FFmpegBridge.runFFmpegList(cmd)
-    if retcode not in expected_retcodes:
-        raise FFmpegPostProcessorError(f"FFmpeg JNI failed with code {retcode}")
+    retcode = FFmpegBridge.runFFmpegJson(json.dumps(cmd))
+    if retcode not in variadic(expected_retcodes):
+        raise FFmpegPostProcessorError(f"FFmpeg JNI failed with exit code {retcode}")
 ```
 
 ### Cancellation Mechanism
-Calling `FFmpegBridge.cancelFFmpeg()` sends `raise(SIGINT)`. FFmpeg's `sigterm_handler()` increments `received_nb_signals`, triggering the interrupt callback and safely aborting transcoding cleanly.
+Calling `FFmpegBridge.cancelFFmpeg()` checks `g_ffmpeg_running` and sends `raise(SIGINT)` at most once per active `ffmpeg_main()` run. FFmpeg's `sigterm_handler()` increments `received_nb_signals`, triggering the interrupt callback and safely aborting transcoding cleanly without risking `SIG_DFL` process termination when idle.
 
 ---
 
@@ -140,10 +140,7 @@ Calling `FFmpegBridge.cancelFFmpeg()` sends `raise(SIGINT)`. FFmpeg's `sigterm_h
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| 1 | **History not persisted across restarts** — `DownloadRepository` in-memory | High | 🔧 Planned (Room) |
-| 2 | **`getAvailableSubtitles` stub** — returns empty list | Low | 🐛 Bug |
-| 3 | **Subtitle language dropdown UI incomplete** | Low | 🔧 Incomplete |
-| 4 | **Filename capture for complex muxes** — post-processing renames final file | Medium | 🔧 Monitored |
+| 1 | **Subtitle language dropdown UI incomplete** | Low | 🔧 Incomplete |
 
 ### Resolved Issues
 | # | Issue | Solution |
@@ -151,11 +148,17 @@ Calling `FFmpegBridge.cancelFFmpeg()` sends `raise(SIGINT)`. FFmpeg's `sigterm_h
 | R1 | `glob()` missing on Android 7/8 | Switched to modern NDK-compiled JNI shared libraries |
 | R2 | `execve()` W^X block on Android 10+ | Switched to in-process JNI `ffmpeg_main` execution |
 | R3 | False `COMPLETE` on error | Explicit JSON status parsing in `DownloadService.kt` |
-| R4 | WebM stream-copy failures | FFmpeg 9.0.2 with native container muxing |
-| R5 | FFmpeg first-run download requirement | Bundled FFmpeg 9.0.2 in `jniLibs` for instant startup |
+| R4 | WebM stream-copy failures | FFmpeg 9.1 with native container muxing |
+| R5 | FFmpeg first-run download requirement | Bundled FFmpeg 9.1 in `jniLibs` for instant startup |
 | R6 | Custom format missing in Settings | Added DataStore key & two-way state in Settings & Download tabs |
 | R7 | yt-dlp Engine self-update blocked | Implemented dynamic GitHub zipapp download, Android 14+ read-only chmod, and in-memory module eviction/reload |
 | R8 | Typing URL flooded yt-dlp threads | Added 600ms debounce and active `Job` cancellation in `DownloadViewModel` |
+| R9 | History not persisted across restarts | Persisted download history in DataStore (`PreferencesManager` + `DownloadRepository`) |
+| R10 | `getAvailableSubtitles` stub | Implemented JSON parsing of manual and automatic subtitles in `YtDlpEngine` |
+| R11 | Filename capture for complex muxes | Added `postprocessor_hooks` and `post_hooks` in `ytdlp_bridge.py` + `resJson` parsing in `DownloadService` |
+| R12 | `FileProvider` Share/Open failure & SAF `/tree/` path crash | Added `<external-files-path>` in `file_paths.xml` and resolved `OpenDocumentTree` paths with writability checks |
+| R13 | `FFmpegPostProcessor._features` / `_fixup_chapters` / `movtext` / `ipod` failures | Patched `_features` & `_fixup_chapters` in `ytdlp_bridge.py` and rebuilt FFmpeg 9.1 with `ipod`, `webm`, `movtext`, `webvtt`, `ass`, `setts` |
+| R14 | `nativeCancelFFmpeg()` `SIG_DFL` crash when idle | Guarded `raise(SIGINT)` with `g_ffmpeg_running` and `g_cancel_sent` atomics in `ffmpeg_jni.c` |
 
 ---
 
