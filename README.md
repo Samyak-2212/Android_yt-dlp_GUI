@@ -10,7 +10,7 @@
 [![Chaquopy 17.1.0](https://img.shields.io/badge/Chaquopy-17.1.0-orange)](https://chaquo.com/chaquopy/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-A native Material 3 Android frontend for [yt-dlp](https://github.com/yt-dlp/yt-dlp) that runs completely on-device via [Chaquopy](https://chaquo.com/chaquopy/) (Python 3.11) and in-process [FFmpeg 9.1 JNI shared libraries](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui) — no external server or executable binary workarounds required.
+A native Material 3 Android frontend for [yt-dlp](https://github.com/yt-dlp/yt-dlp) that runs completely on-device via [Chaquopy](https://chaquo.com/chaquopy/) (Python 3.11) and in-process [FFmpeg 9.1 JNI shared libraries](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui), targeting Android 7.0 through Android 15+.
 
 [Features](#features) · [Architecture](#architecture) · [Building from Source](#building-from-source) · [Tech Stack](#tech-stack) · [Links](#links--resources) · [License](#license)
 
@@ -23,9 +23,9 @@ A native Material 3 Android frontend for [yt-dlp](https://github.com/yt-dlp/yt-d
 - **Video Downloads** — Quality presets from `360p` up to `4K`, custom `yt-dlp` format specifier, and native `MP4` / `MKV` / `WebM` merging
 - **Audio Extraction** — Extract and convert audio streams (`M4A`/AAC, `Opus`, `FLAC`, `WAV`) via in-process FFmpeg
 - **Subtitles & Captions** — Embed soft subtitles (`mov_text` in MP4, `srt` in MKV), convert `VTT`/`ASS`/`SRT`, save separate subtitle files, and include auto-generated captions
-- **YouTube Music Metadata** — Embed track metadata and chapter information cleanly without external `ffprobe` crashes
+- **YouTube Music Metadata** — Embed track metadata and chapter information via in-process FFmpeg post-processing
 - **Zero-Setup First Run** — Pre-bundled FFmpeg 9.1 JNI shared libraries for `arm64-v8a`, `armeabi-v7a`, and `x86_64`
-- **Modern Android Compatibility (API 24–35+)** — In-process JNI execution avoids Android 10+ W^X `execve` restrictions, dynamic updates enforce Android 14+ read-only rules, and all `.so` libraries are 16 KB page-aligned for Android 15+
+- **Android 7.0–15+ Support (API 24–35+)** — In-process JNI execution, read-only dynamic Python zipapp updates, and 16 KB page-aligned native libraries
 - **Storage Picker** — SAF folder selection with `primary:` path resolution, writability validation, recent folder chips, and app-external `Downloads` fallback
 - **Foreground Download Service** — Persistent progress notifications, concurrency limits (`1–5` tasks), and signal-safe cancellation
 - **Persistent Download History** — Search completed downloads and share or open media files directly via `FileProvider`
@@ -60,13 +60,13 @@ A native Material 3 Android frontend for [yt-dlp](https://github.com/yt-dlp/yt-d
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Why JNI Shared Libraries (Approach A)?
+### Native Runtime Details
 
-| Execution Strategy | Android 7–9 (API 24–28) | Android 10–13 (API 29–33) | Android 14+ (API 34+) |
-|---|---|---|---|
-| Standalone binary in `filesDir` (`execve`) | ✅ Works | ❌ Blocked by W^X policy | ❌ Hard blocked |
-| Static legacy binary (v3.3.2) | ⚠️ Codec & symbol gaps | ❌ Blocked | ❌ Hard blocked |
-| **FFmpeg 9.1 JNI (`jniLibs/`)** | **✅ Works** | **✅ Works** | **✅ Works (16 KB aligned)** |
+- **Embedded Python**: Chaquopy runs Python 3.11 with `yt-dlp` on-device and supports in-place zipapp updates (`filesDir/updates/yt-dlp.zip`, marked read-only for API 34+).
+- **In-Process FFmpeg 9.1**: `YtDlpApp` loads the 7 bundled shared libraries from `jniLibs/` in dependency order (`avutil` → `swresample` → `swscale` → `avcodec` → `avformat` → `avfilter` → `ffmpeg_jni`), and `ytdlp_bridge.py` routes `FFmpegPostProcessor` calls directly through `FFmpegBridge.runFFmpegJson`.
+- **Supported ABIs**: `arm64-v8a`, `armeabi-v7a`, and `x86_64` (16 KB ELF page-aligned for Android 15+).
+
+> For architectural rationale and contributor constraints, see [AGENTS.md](AGENTS.md).
 
 ---
 

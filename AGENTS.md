@@ -85,6 +85,12 @@ Standalone ELF binaries placed in `context.filesDir` fail on modern Android:
 2. **Missing Bionic Symbols**: Dynamic binaries depend on `glob()`, absent before API 28.
 3. **Outdated Binaries**: Static binaries targeting API 21 were stuck at FFmpeg 3.3.2 (2017).
 
+| Execution Strategy | Android 7–9 (API 24–28) | Android 10–13 (API 29–33) | Android 14+ (API 34+) |
+|---|---|---|---|
+| Standalone binary in `filesDir` (`execve`) | ✅ Works | ❌ Blocked by W^X policy | ❌ Hard blocked |
+| Static legacy binary (v3.3.2) | ⚠️ Codec & symbol gaps | ❌ Blocked | ❌ Hard blocked |
+| **FFmpeg 9.1 JNI (`jniLibs/`)** | **✅ Works** | **✅ Works** | **✅ Works (16 KB aligned)** |
+
 ### The In-Process JNI Architecture
 Instead of spawning a child process, FFmpeg 9.1 is compiled into 7 shared libraries:
 - `libavcodec.so` (decoders / encoders: AAC, Opus, FLAC, ALAC, H.264, HEVC, VP9, AV1, SRT/ASS/WebVTT/mov_text)
