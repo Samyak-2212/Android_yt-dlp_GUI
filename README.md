@@ -1,32 +1,35 @@
+<div align="center">
+
 # Android yt-dlp GUI
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Android-7.0%2B-brightgreen?logo=android" alt="Android 7.0+"/>
-  <img src="https://img.shields.io/badge/Kotlin-2.3.20-blueviolet?logo=kotlin" alt="Kotlin"/>
-  <img src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-blue?logo=jetpackcompose" alt="Compose"/>
-  <img src="https://img.shields.io/badge/yt--dlp-2026.11.23-red" alt="yt-dlp"/>
-  <img src="https://img.shields.io/badge/FFmpeg-9.1%20JNI-blue" alt="FFmpeg 9.1 JNI"/>
-  <img src="https://img.shields.io/badge/Chaquopy-17.1.0-orange" alt="Chaquopy"/>
-  <img src="https://img.shields.io/badge/minSdk-24-yellow" alt="minSdk 24"/>
-</p>
+[![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-brightgreen?logo=android)](https://developer.android.com/about/versions/nougat)
+[![Kotlin 2.3.20](https://img.shields.io/badge/Kotlin-2.3.20-blueviolet?logo=kotlin)](https://kotlinlang.org/)
+[![Jetpack Compose Material 3](https://img.shields.io/badge/Jetpack%20Compose-Material%203-blue?logo=jetpackcompose)](https://developer.android.com/compose)
+[![yt-dlp 2026.11.23](https://img.shields.io/badge/yt--dlp-2026.11.23-red)](https://github.com/yt-dlp/yt-dlp/releases)
+[![FFmpeg 9.1 JNI](https://img.shields.io/badge/FFmpeg-9.1%20JNI-blue)](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui)
+[![Chaquopy 17.1.0](https://img.shields.io/badge/Chaquopy-17.1.0-orange)](https://chaquo.com/chaquopy/)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-A native Android application providing a full-featured GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), supporting YouTube video & audio downloads, subtitle embedding, YouTube Music metadata, and more — running entirely on-device via Python-in-Android (Chaquopy) with **in-process FFmpeg 9.1 JNI shared libraries**.
+A native Material 3 Android frontend for [yt-dlp](https://github.com/yt-dlp/yt-dlp) that runs completely on-device via [Chaquopy](https://chaquo.com/chaquopy/) (Python 3.11) and in-process [FFmpeg 9.1 JNI shared libraries](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui) — no external server or executable binary workarounds required.
+
+[Features](#features) · [Architecture](#architecture) · [Building from Source](#building-from-source) · [Tech Stack](#tech-stack) · [Links](#links--resources) · [License](#license)
+
+</div>
 
 ---
 
 ## Features
 
-- 🎬 **Video Downloads** — Quality presets up to 4K, custom format specifier, MP4/MKV output
-- 🎵 **Audio Extraction** — M4A (AAC), Opus, FLAC, WAV with configurable bitrate
-- 📝 **Subtitles** — Embed in video (`mov_text`/`srt`), convert VTT/ASS/SRT, save separately, auto-generated, multi-language
-- 🎤 **YouTube Music** — Lyrics & metadata embedding via in-process FFmpeg
-- 🚀 **Zero-Setup Startup** — Pre-bundled FFmpeg 9.1 JNI shared libraries (`arm64-v8a`, `armeabi-v7a`, `x86_64`)
-- 🔒 **Full Modern Android Compatibility** — In-process JNI avoids Android 10+ W^X `execve` blocks; 16 KB page-aligned for Android 15 (API 35+)
-- 📁 **Storage Selection** — SAF picker + persistent path memory, app-external default
-- 🔔 **Foreground Download Service** — Persistent notification with progress bar; survives app backgrounding
-- 📜 **Download History** — Search, open, share, delete completed downloads
-- 🔄 **In-App Dynamic Engine Updater** — Check and dynamically update yt-dlp on-the-fly directly from GitHub Releases zipapp without reinstalling the app (Android 14+ read-only compliant)
-- ⚙️ **Settings** — Light/Dark/System theme, download defaults (including custom format specifier), yt-dlp update check & install, FFmpeg version info, app self-update
+- **Video Downloads** — Quality presets from `360p` up to `4K`, custom `yt-dlp` format specifier, and native `MP4` / `MKV` / `WebM` merging
+- **Audio Extraction** — Extract and convert audio streams (`M4A`/AAC, `Opus`, `FLAC`, `WAV`) via in-process FFmpeg
+- **Subtitles & Captions** — Embed soft subtitles (`mov_text` in MP4, `srt` in MKV), convert `VTT`/`ASS`/`SRT`, save separate subtitle files, and include auto-generated captions
+- **YouTube Music Metadata** — Embed track metadata and chapter information cleanly without external `ffprobe` crashes
+- **Zero-Setup First Run** — Pre-bundled FFmpeg 9.1 JNI shared libraries for `arm64-v8a`, `armeabi-v7a`, and `x86_64`
+- **Modern Android Compatibility (API 24–35+)** — In-process JNI execution avoids Android 10+ W^X `execve` restrictions, dynamic updates enforce Android 14+ read-only rules, and all `.so` libraries are 16 KB page-aligned for Android 15+
+- **Storage Picker** — SAF folder selection with `primary:` path resolution, writability validation, recent folder chips, and app-external `Downloads` fallback
+- **Foreground Download Service** — Persistent progress notifications, concurrency limits (`1–5` tasks), and signal-safe cancellation
+- **Persistent Download History** — Search completed downloads and share or open media files directly via `FileProvider`
+- **In-App Updaters** — Dynamically update `yt-dlp` from [yt-dlp GitHub Releases](https://github.com/yt-dlp/yt-dlp/releases) without reinstalling the APK, plus in-app APK update checks from [Releases](https://github.com/Samyak-2212/Android_yt-dlp_GUI/releases)
 
 ---
 
@@ -35,18 +38,18 @@ A native Android application providing a full-featured GUI for [yt-dlp](https://
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Jetpack Compose UI                     │
-│               DownloadScreen  HistoryScreen  Settings       │
+│               DownloadScreen · History · Settings           │
 └──────────────────────────────┬──────────────────────────────┘
                                │ ViewModel / StateFlow
 ┌──────────────────────────────▼──────────────────────────────┐
 │                      DownloadService                        │
-│              (Foreground Service, Coroutines)               │
+│         (Foreground Service, Concurrency & Coroutines)      │
 └──────────────────────────────┬──────────────────────────────┘
                                │ YtDlpEngine (Kotlin)
 ┌──────────────────────────────▼──────────────────────────────┐
 │                 ytdlp_bridge.py (Python)                    │
-│           extract_info / download / get_progress            │
-│         [Intercepts FFmpegPostProcessor via JNI]            │
+│     extract_info / download / post_hooks / get_progress     │
+│        [Hooks FFmpegPostProcessor to In-Process JNI]        │
 └──────────────────────────────┬──────────────────────────────┘
                                │ In-Process JNI Calls
 ┌──────────────────────────────▼──────────────────────────────┐
@@ -62,8 +65,8 @@ A native Android application providing a full-featured GUI for [yt-dlp](https://
 | Execution Strategy | Android 7–9 (API 24–28) | Android 10–13 (API 29–33) | Android 14+ (API 34+) |
 |---|---|---|---|
 | Standalone binary in `filesDir` (`execve`) | ✅ Works | ❌ Blocked by W^X policy | ❌ Hard blocked |
-| Static legacy binary (v3.3.2) | ⚠️ Codec mismatch | ❌ Blocked | ❌ Hard blocked |
-| **FFmpeg 9.1 JNI (`jniLibs/`)** | **✅ Works** | **✅ Works** | **✅ Works (16KB aligned)** |
+| Static legacy binary (v3.3.2) | ⚠️ Codec & symbol gaps | ❌ Blocked | ❌ Hard blocked |
+| **FFmpeg 9.1 JNI (`jniLibs/`)** | **✅ Works** | **✅ Works** | **✅ Works (16 KB aligned)** |
 
 ---
 
@@ -71,25 +74,28 @@ A native Android application providing a full-featured GUI for [yt-dlp](https://
 
 ### Prerequisites
 
-- [Android Studio](https://developer.android.com/studio) Ladybug / Meerkat or later
-- JDK 17 (`java -version` → 17.x)
-- Android SDK with API 35 installed
-- Python 3.11 (via [uv](https://github.com/astral-sh/uv)):
+- [Android Studio](https://developer.android.com/studio) (Ladybug / Meerkat or newer)
+- JDK 17 (`java -version` → `17.x`)
+- Android SDK with API 35/36 installed
+- Python 3.11 via [uv](https://docs.astral.sh/uv/):
   ```powershell
   uv python install 3.11
   ```
 
-### Build Steps
+### Build & Install
 
 ```powershell
-# Clone
+# Clone the repository
 git clone https://github.com/Samyak-2212/Android_yt-dlp_GUI.git
 cd Android_yt-dlp_GUI
 
-# Assemble Debug APK
-.\gradlew assembleDebug
+# Build Debug APK
+.\gradlew.bat assembleDebug
 
-# Install to connected device
+# Run unit tests & lint
+.\gradlew.bat testDebugUnitTest lintDebug
+
+# Install to a connected device
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -97,24 +103,32 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Tech Stack
 
-| Component | Version |
+| Component | Details |
 |---|---|
-| Language | Kotlin 2.3.20 |
-| UI | Jetpack Compose + Material 3 |
-| Python runtime | Chaquopy 17.1.0 + Python 3.11 |
-| Downloader | yt-dlp `2026.11.23` (pip package + zipapp self-updater) |
-| Post-processor | FFmpeg 9.1 JNI Shared Libraries |
-| HTTP | OkHttp |
-| Serialization | Kotlinx Serialization JSON |
-| Settings | AndroidX DataStore Preferences |
-| Build System | Gradle 9.1.0 + AGP 9.0.1 |
-| API Levels | minSdk 24 / targetSdk 35 / compileSdk 36 |
+| Language | [Kotlin 2.3.20](https://kotlinlang.org/) |
+| UI Framework | [Jetpack Compose](https://developer.android.com/compose) + [Material 3](https://m3.material.io/) |
+| Python Runtime | [Chaquopy 17.1.0](https://chaquo.com/chaquopy/) (Python 3.11) |
+| Media Extractor | [yt-dlp 2026.11.23](https://github.com/yt-dlp/yt-dlp/releases) (pip + dynamic zipapp updater) |
+| Post-Processor | [FFmpeg 9.1 JNI Shared Libraries](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui) |
+| Networking | [OkHttp](https://github.com/square/okhttp) |
+| Serialization | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) |
+| Persistence | [AndroidX DataStore Preferences](https://developer.android.com/topic/libraries/architecture/datastore) |
+| Build System | Gradle 9.1.0 + AGP 9.0.1 (`minSdk 24` / `targetSdk 35` / `compileSdk 36`) |
+
+---
+
+## Links & Resources
+
+- **Repository**: [github.com/Samyak-2212/Android_yt-dlp_GUI](https://github.com/Samyak-2212/Android_yt-dlp_GUI)
+- **Releases & APKs**: [github.com/Samyak-2212/Android_yt-dlp_GUI/releases](https://github.com/Samyak-2212/Android_yt-dlp_GUI/releases)
+- **Issue Tracker**: [github.com/Samyak-2212/Android_yt-dlp_GUI/issues](https://github.com/Samyak-2212/Android_yt-dlp_GUI/issues)
+- **FFmpeg 9.1 JNI Backend**: [github.com/Samyak-2212/ffmpeg_yt-dlp_gui](https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui)
+- **Architecture & Contributor Guide**: [AGENTS.md](AGENTS.md)
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-yt-dlp is licensed under the [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE).
-FFmpeg is licensed under the [LGPL v2.1+](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html).
+- **Android yt-dlp GUI**: Licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE) for full text.
+- **yt-dlp**: Licensed under the [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE).
+- **FFmpeg**: Licensed under [LGPL v2.1+ / GPL](https://ffmpeg.org/legal.html). See [ffmpeg.org](https://ffmpeg.org/) for details.

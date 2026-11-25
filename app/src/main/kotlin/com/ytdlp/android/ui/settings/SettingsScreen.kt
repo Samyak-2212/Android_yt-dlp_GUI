@@ -1,5 +1,6 @@
 package com.ytdlp.android.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,16 +13,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +55,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -433,6 +443,13 @@ fun SettingsScreen(
         }
 
         item {
+            val uriHandler = LocalUriHandler.current
+            val openUrl: (String) -> Unit = { url ->
+                try {
+                    uriHandler.openUri(url)
+                } catch (_: Exception) {}
+            }
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()
@@ -441,22 +458,118 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "YT-DLP Android GUI",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                text = "YT-DLP Android GUI",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "v${BuildConfig.VERSION_NAME} • GPL-3.0 License",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "A simple, powerful, and modern Material 3 interface for yt-dlp running completely on-device via embedded Python.\n\nOpen-source under the GPL-3.0 License.",
+                        text = "A native Material 3 interface for yt-dlp running on-device via embedded Python (Chaquopy) and in-process FFmpeg 9.1 JNI shared libraries.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    AboutLinkRow(
+                        icon = Icons.Default.Code,
+                        title = "GitHub Repository",
+                        subtitle = "Samyak-2212/Android_yt-dlp_GUI",
+                        onClick = { openUrl("https://github.com/Samyak-2212/Android_yt-dlp_GUI") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.NewReleases,
+                        title = "App Releases",
+                        subtitle = "Download APKs & changelogs",
+                        onClick = { openUrl("https://github.com/Samyak-2212/Android_yt-dlp_GUI/releases") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.BugReport,
+                        title = "Report an Issue",
+                        subtitle = "Bug reports & feature requests",
+                        onClick = { openUrl("https://github.com/Samyak-2212/Android_yt-dlp_GUI/issues") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.Terminal,
+                        title = "FFmpeg 9.1 JNI Backend",
+                        subtitle = "Samyak-2212/ffmpeg_yt-dlp_gui",
+                        onClick = { openUrl("https://github.com/Samyak-2212/ffmpeg_yt-dlp_gui") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.Download,
+                        title = "yt-dlp Project",
+                        subtitle = "github.com/yt-dlp/yt-dlp",
+                        onClick = { openUrl("https://github.com/yt-dlp/yt-dlp") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.Settings,
+                        title = "Chaquopy Python Runtime",
+                        subtitle = "chaquo.com/chaquopy",
+                        onClick = { openUrl("https://chaquo.com/chaquopy/") }
+                    )
+                    AboutLinkRow(
+                        icon = Icons.Default.Gavel,
+                        title = "Open-Source License (GPL-3.0)",
+                        subtitle = "View LICENSE on GitHub",
+                        onClick = { openUrl("https://github.com/Samyak-2212/Android_yt-dlp_GUI/blob/main/LICENSE") }
                     )
                 }
             }
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
+private fun AboutLinkRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+            contentDescription = "Open link",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
